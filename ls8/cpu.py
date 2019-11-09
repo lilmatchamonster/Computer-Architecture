@@ -6,6 +6,14 @@ HLT = 0b00000001
 LDI = 0b10000010
 PRN = 0b01000111
 MUL = 0b10100010
+POP = 0b01000110 
+PUSH = 0b01000101
+RET = 0b00010001
+CALL = 0b01010000
+JMP = 0b01010100
+JEQ = 0b01010101 
+JNE = 0b01010110 
+CMP = 0b10100111
 
 class CPU:
     """Main CPU class."""
@@ -14,8 +22,9 @@ class CPU:
         """Construct a new CPU."""
         self.ram = [0] * 256
         self.reg = [0] * 8
-        self.pc = 0
-        
+        self.pc = 0               
+        self.fl = 6               
+        self.SP = 7          
 
     def load(self, program):
         """Load a program into memory."""
@@ -34,18 +43,28 @@ class CPU:
         #     0b00000000,
         #     0b00000001, # HLT
         # ]
-        here = []
+        # here = []
         try:
             with open(program) as file:
                 for line in file:
-                    split_line = line.split('#')
-                    command_line = split_line[0]
-                    if len(command_line) > 0:
-                        command_line.strip()
-                    if command_line[0] == '1' or command_line[0] == '0':
-                        here = command_line.strip()
-                        self.ram[address] = int(here, 2)
-                        address += 1
+                    comment_split = line.split('#')
+                    maybe_command = comment_split[0].strip()
+
+                    if maybe_command == '':
+                        continue
+                    self.ram[address] = int(maybe_command, 2)
+
+                    address +=1
+            # with open(program) as file:
+            #     for line in file:
+            #         split_line = line.split('#')
+            #         command_line = split_line[0]
+            #         if len(command_line) > 0:
+            #             command_line.strip()
+            #         if command_line[0] == '1' or command_line[0] == '0':
+            #             here = command_line.strip()
+            #             self.ram[address] = int(here, 2)
+            #             address += 1
         except FileNotFoundError:
             print('File does not exist')
 
@@ -62,6 +81,17 @@ class CPU:
         #elif op == "SUB": etc
         if op == "MUL":
             self.reg[reg_a] *= self.reg[reg_b]
+        if op == "CMP":
+            result = 0
+            if self.reg[reg_a] == self.reg[reg_b]:
+                result = 1
+            elif self.reg[reg_a] > self.reg[reg_b]:
+                result = 2
+            elif self.reg[reg_a] < self.reg[reg_b]:
+                result = 4
+
+            self.reg[self.fl] = result
+            self.pc += 3
         else:
             raise Exception("Unsupported ALU operation")
 
@@ -111,6 +141,62 @@ class CPU:
             elif ir == MUL:
                 self.alu("MUL", operand_a, operand_b)
                 self.pc += 3
+                
+            elif ir == CMP:
+                self.alu("CMP", operand_a, operand_b)
+                self.pc += 3
+
+            elif ir == PUSH:
+                # decrement the stack pointer
+                self.reg[7] -= 1
+
+                # get what is in the register
+                reg_address = self.ram[self.pc + 1]
+                value = self.reg[reg_address]
+
+                # store it at that point in the stack
+                self.SP = self.reg[7]
+                self.ram[self.SP] = value
+
+                self.pc += 2
+
+            elif ir == POP:
+                # Copy the value from the address pointed to by SP to the given register.
+                self.SP = self.reg[7]
+                value = self.ram[self.SP]
+                target_reg_address = self.ram[self.pc + 1]
+                self.reg[target_reg_address] = value
+
+                # Increment SP
+                self.reg[7] += 1
+
+                self.pc += 2
+            
+            elif ir == CALL:
+                self.reg[self.SP] -= 1
+                self.ram[self.reg[self.SP]] = self.pc + 2
+                self.pc = self.reg[operand_a]
+
+            elif ir == RET:
+                value = self.ram[self.reg[self.SP]]
+                self.pc = value
+
+                self.reg[self.SP] += 1
+            
+            elif ir == JMP:
+                self.pc = self.reg[operand_a]
+
+            elif ir == JEQ:
+                if self.reg[self.fl] == 1:
+                    self.pc = self.reg[operand_a]
+                else:
+                    self.pc += 2
+
+            elif ir == JNE:
+                if self.reg[self.fl] != 1:
+                    self.pc = self.reg[operand_a]
+                else:
+                    self.pc += 2
 
             elif ir == HLT:
                 print(f'Entered HLT. CPU ending...')
